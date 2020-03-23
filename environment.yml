@@ -1,0 +1,4 @@
+name: hpc-project
+dependencies:
+  - python=3.6
+  - networkx
