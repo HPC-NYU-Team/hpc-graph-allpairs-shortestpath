@@ -110,18 +110,3 @@ int main(){
 
 
 
-// diameter ← 1
-// distance ← nodes∗(nodes−1) elements ← ⌈nodes/E ⌉
-// A, B ← INITIALIZE(nodes, elements) 
-// for k=1 ... nodes−1
-// for i=1 ... nodes
-// for n ∈ neighbors(i, vertices)
-// for j=1 ... elements
-// B[i][j] ← B[i][j] | A[n][j]
-// num←0
-// for i=1 ... nodes
-// for j=1 ... elements
-// num ← num+POPCNT(B[i][j])
-// if(num = nodes∗nodes) break SWAP(A, B)
-// diameter++
-// distance ← distance+(nodes∗nodes−num) average_distance ← distance/((nodes−1)∗nodes) return diameter, average_distance
