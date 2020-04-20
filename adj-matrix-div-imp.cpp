@@ -3,7 +3,7 @@
 #include <omp.h>
 #include <cmath>
 #include "graphGenerator.cpp"
-#define CHUNK_SIZE 5 
+#define CHUNK_SIZE 100
 using namespace std; 
 template <class T>
 void print(int order, T **A){
@@ -88,12 +88,13 @@ pair<int, double> serailDividedAdjAPSP(int **graph, int order, vector<vector<int
     double average_distance = 0.0; 
     int  num = 0; 
     //cout<<parSize; 
-    #pragma omp parallel for 
+    //#pragma omp parallel for 
     for(int p = 0; p < parSize ;  p++){
         int k_outer;
         initialiseAB(A,B,p*CHUNK_SIZE,p*CHUNK_SIZE+CHUNK_SIZE,order);
         initialiseAPSP(APSP,p*CHUNK_SIZE,p*CHUNK_SIZE+CHUNK_SIZE,order); 
         for(int k = 0 ; k < order-1 ; k++){
+            #pragma omp parallel for
             for(int i = 0; i < order ; i++){
                 for(auto n: neighbours[i]){
                     for(int j = p*CHUNK_SIZE ; j < p*CHUNK_SIZE+CHUNK_SIZE ; j ++){
@@ -103,6 +104,7 @@ pair<int, double> serailDividedAdjAPSP(int **graph, int order, vector<vector<int
                 }
             }
             num = 0; 
+            #pragma omp parallel for reduction(+:num)
             for(int i = 0; i < order; i++)
                 for(int j = p*CHUNK_SIZE ; j < p*CHUNK_SIZE+CHUNK_SIZE ; j ++){
                     if(B[i][j]==1){
@@ -126,8 +128,8 @@ pair<int, double> serailDividedAdjAPSP(int **graph, int order, vector<vector<int
 }
 
 int main(int argc, char *argv[]){
-    string fileName = "n50d3.random.edges"; 
-    int order  = 50;  
+    string fileName = "n1000d5.random.edges"; 
+    int order  = 1000;  
     int **graph = getAdjacencyMatrixArray( fileName,order); 
      
     int **APSP_serial = new int*[order]; 
