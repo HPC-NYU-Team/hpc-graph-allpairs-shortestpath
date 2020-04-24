@@ -87,10 +87,10 @@ void serialBfsApsp(vector<vector<int>> g){
 	int startSrc = chunkSize * RANK;
         int endSrc   = chunkSize * (RANK+1);
         if(endSrc > g.size())
-                endSrc = endSrc % g.size();
+                endSrc = g.size();
 	int currSize = endSrc-startSrc;
-	//printf("%d %d %d", startSrc, endSrc, currSize);
-	float* diameter = new float[currSize];
+	printf("%d %d %d", startSrc, endSrc, currSize);
+	/*float* diameter = new float[currSize];
 	float* distance = new float[currSize];
 	
 	for(int i=0; i<currSize; i++){
@@ -100,6 +100,7 @@ void serialBfsApsp(vector<vector<int>> g){
 	}
 	cout << "Proc:" << RANK << "  "<< "Max diameter: " << *max_element(diameter, diameter + currSize) << endl;
 	cout << "Proc:" << RANK << "  " << "Avg distance: " << (accumulate(distance, distance + currSize, 0.0) / currSize) << endl;
+	*/
 }
 
 void parallelBfsApsp(vector<vector<int>> g){
@@ -130,19 +131,32 @@ int main(int argc, char *argv[]) {
 	MPI_Comm_rank(MPI_COMM_WORLD, &RANK);
 	string fileName = "n1024d4.random.edges"; 
 	int order = 1024;
-	
-	vector<vector<int>> g = getAdjacencyListVector(fileName,order); 
-
+	vector<vector<int>> g(1024, vector<int>(4));
+	int gsize = 1024*4;
+	vector<int> newg;
+	if(RANK == 0){
+		g = getAdjacencyListVector(fileName,order);
+		for(auto && v : g){
+ 			 newg.insert(newg.end(), v.begin(), v.end());
+		}
+	}
+	newg.resize(gsize);
+	MPI_Bcast(&newg[0], gsize, MPI_INT, 0, MPI_COMM_WORLD);
+	if(RANK != 0){
+		for(int i=0; i<newg.size(); i++){
+			g[i/4][i%4] = newg[i];
+		}
+	}
 	double tt = omp_get_wtime();
 	serialBfsApsp(g);
 	printf("sequential-bfs-apsp = %fs\n", omp_get_wtime() - tt);
 
-	tt = omp_get_wtime();
-	parallelBfsApsp(g);
-	printf("parallel-bfs-apsp = %fs\n", omp_get_wtime() - tt);
-	if(RANK == 0){
-		printf("But I am the main dude. %d / %d \n", RANK, PROCS);
-	}
+	//tt = omp_get_wtime();
+	//parallelBfsApsp(g);
+	//printf("parallel-bfs-apsp = %fs\n", omp_get_wtime() - tt);
+	//if(RANK == 0){
+	//	printf("But I am the main dude. %d / %d \n", RANK, PROCS);
+	//}
 	MPI_Finalize();
 	return 0;
 	
