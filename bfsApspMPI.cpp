@@ -86,11 +86,14 @@ void serialBfsApsp(vector<vector<int>> g){
 	int chunkSize = ceil(1.0*g.size()/PROCS);
 	int startSrc = chunkSize * RANK;
         int endSrc   = chunkSize * (RANK+1);
+	if(startSrc > g.size())
+		startSrc = g.size();
         if(endSrc > g.size())
                 endSrc = g.size();
 	int currSize = endSrc-startSrc;
-	printf("%d %d %d", startSrc, endSrc, currSize);
-	/*float* diameter = new float[currSize];
+	//printf("%d %d %d", startSrc, endSrc, currSize);
+	
+	float* diameter = new float[currSize];
 	float* distance = new float[currSize];
 	
 	for(int i=0; i<currSize; i++){
@@ -100,15 +103,17 @@ void serialBfsApsp(vector<vector<int>> g){
 	}
 	cout << "Proc:" << RANK << "  "<< "Max diameter: " << *max_element(diameter, diameter + currSize) << endl;
 	cout << "Proc:" << RANK << "  " << "Avg distance: " << (accumulate(distance, distance + currSize, 0.0) / currSize) << endl;
-	*/
+		
 }
 
-void parallelBfsApsp(vector<vector<int>> g){
+pair<float, float> parallelBfsApsp(vector<vector<int>> g){
 	int chunkSize = ceil(1.0*g.size()/PROCS);
 	int startSrc = chunkSize * RANK;
         int endSrc   = chunkSize * (RANK+1);
+	if(startSrc > g.size())
+                startSrc = g.size();
         if(endSrc > g.size())
-                endSrc = endSrc % g.size();
+                endSrc = g.size();
 	int currSize = endSrc-startSrc;
 	float* diameter = new float[currSize];
 	float* distance = new float[currSize];
@@ -119,8 +124,18 @@ void parallelBfsApsp(vector<vector<int>> g){
 		diameter[i] = *max_element(distances, distances + g.size());
 		distance[i] = accumulate(distances, distances + g.size(), 0.0) / g.size();
 	}
-	cout << "Proc:" << RANK << "  " << "Max diameter: " << *max_element(diameter, diameter + currSize) << endl;
-	cout << "Proc:" << RANK << "  " << "Avg distance: " << (accumulate(distance, distance + currSize, 0.0) / currSize) << endl;
+	float local_max_dia = *max_element(diameter, diameter + currSize);
+	float local_avg_dist = (accumulate(distance, distance + currSize, 0.0) / currSize);
+	//cout << "Proc:" << RANK << "  " << "Local Max diameter: " << local_max_dia << endl;
+	//cout << "Proc:" << RANK << "  " << "Local Avg distance: " << local_avg_dist << endl;
+	float global_max_dia, global_avg_dist;
+	MPI_Reduce(&local_max_dia, &global_max_dia, 1, MPI_FLOAT, MPI_MAX, 0, MPI_COMM_WORLD);
+	MPI_Reduce(&local_avg_dist, &global_avg_dist, 1, MPI_FLOAT, MPI_SUM, 0, MPI_COMM_WORLD);
+	if(RANK == 0){
+		// The ceil might give us an extra empty 0, take that into account, dont avg it. Could be  PROCS/PROCS-1. TODO
+		global_avg_dist /= (1.0*PROCS);
+	}
+	return make_pair(global_max_dia, global_avg_dist);
 }
 
 
@@ -148,15 +163,16 @@ int main(int argc, char *argv[]) {
 		}
 	}
 	double tt = omp_get_wtime();
-	serialBfsApsp(g);
-	printf("sequential-bfs-apsp = %fs\n", omp_get_wtime() - tt);
+	//serialBfsApsp(g);
+	//printf("sequential-bfs-apsp = %fs\n", omp_get_wtime() - tt);
 
-	//tt = omp_get_wtime();
-	//parallelBfsApsp(g);
-	//printf("parallel-bfs-apsp = %fs\n", omp_get_wtime() - tt);
-	//if(RANK == 0){
-	//	printf("But I am the main dude. %d / %d \n", RANK, PROCS);
-	//}
+	tt = MPI_Wtime();
+	pair<float, float> res = parallelBfsApsp(g);
+	//printf("PROC:%d parallel-bfs-apsp = %fs\n", RANK, MPI_Wtime() - tt);
+	if(RANK == 0){
+		printf("Overall time = %fs\n", MPI_Wtime() - tt);
+		printf("GLOBAL MAXDIA = %f   AVGDIST = %f \n", res.first, res.second);
+	}
 	MPI_Finalize();
 	return 0;
 	
