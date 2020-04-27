@@ -27,46 +27,18 @@ void initialiseAB(bool **A, bool **B, int r, int c, int offset, int arr_off){
             }
         }
 }
-// void initialiseAB(bool **A, bool **B, int col_beg, int col_end,int order){
-//     for(int i = 0; i < order; i++)
-//         for(int j = col_beg; j < col_end; j++)
-//         {    
-//             if(j==order-1-i){
-//                 A[i][j] = 1; 
-//                 B[i][j] = 1;
-//             }
-//             else {
-//                 A[i][j] = 0; 
-//                 B[i][j] = 0; 
-//             }
-//         }
 
-// }
-
-// void initialiseABparallel(bool **A, bool **B,int chunk, int offset,int order){
-//     for(int i = 0; i < order; i++)
-//         for(int j = 0; j < chunk; j++)
-//         {    
-//             if(offset*chunk+j==order-1-i){
-//                 A[i][j] = 1; 
-//                 B[i][j] = 1;
-//             }
-//             else {
-//                 A[i][j] = 0; 
-//                 B[i][j] = 0; 
-//             }
-//         }
-// }
-
-void initialiseAPSP(int **APSP,int col_beg, int col_end,int order){
-    for(int i = 0; i < order; i++)
-        for(int j = col_beg; j < col_end ; j++)
-            if(j==order-1-i)
-                APSP[i][j] = 0; 
-            else 
-                APSP[i][j] = INT_MAX; 
+void initialiseAPSP(int **APSP, int r, int c, int offset, int arr_off){
+    for(int i = 0; i < r; i++)
+        for(int j = 0; j < c; j++){
+            if(offset*c+j==r-1-i){
+                APSP[i][c*arr_off +j] = 0; 
+            }
+            else {
+                APSP[i][c*arr_off +j] = INT_MAX; 
+            }
+        }
 }
-
 
 void initialiseAPSPparallel(int *APSP,int order,int chunk,int offset){
    for(int i = 0; i < order; i++)
@@ -84,7 +56,7 @@ void initialiseAPSPparallel(int *APSP,int order,int chunk,int offset){
 pair<int, double> serailAdjAPSP(int order, vector<vector<int> > &neighbours, int **APSP, bool **A, bool **B){
 
     initialiseAB(A,B,order,order,0,0);
-    initialiseAPSP(APSP,0,order,order); 
+    initialiseAPSP(APSP,order,order,0,0); 
 
     int diameter = 1; 
     int distance = order * (order-1); 
@@ -129,8 +101,9 @@ pair<int, double> serailDividedAdjAPSP(int order, vector<vector<int> > &neighbou
     for(int p = 0; p < parSize ;  p++){
         int k_outer;
         initialiseAB(A,B,order,CHUNK_SIZE,p,p);
+        initialiseAPSP(APSP,order,CHUNK_SIZE,p,p);
         //initialiseAB(A,B,p*CHUNK_SIZE,p*CHUNK_SIZE+CHUNK_SIZE,order);
-        initialiseAPSP(APSP,p*CHUNK_SIZE,p*CHUNK_SIZE+CHUNK_SIZE,order); 
+        //initialiseAPSP(APSP,p*CHUNK_SIZE,p*CHUNK_SIZE+CHUNK_SIZE,order); 
         for(int k = 0 ; k < order-1 ; k++){
             #pragma omp parallel for num_threads(4)
             for(int i = 0; i < order ; i++){
@@ -173,6 +146,7 @@ pair<int, double> parallelDividedAdjAPSP( int order,int chunk, vector<vector<int
     int rank; 
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     initialiseAB(A,B,order,chunk,rank,0);
+    //initialiseAPSP(APSP,order,chunk,rank,0);
     //initialiseABparallel(A,B,chunk, rank, order); 
     initialiseAPSPparallel(APSP, order , chunk , rank); 
     for(int k = 0 ; k < order-1 ; k++){
