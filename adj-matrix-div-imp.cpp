@@ -88,15 +88,18 @@ pair<int, double> serailDividedAdjAPSP(int **graph, int order, vector<vector<int
     double average_distance = 0.0; 
     int  num = 0; 
     //cout<<parSize; 
+    //omp_set_num_threads(4); 
+    cout<<omp_get_num_threads()<<endl; 
     //#pragma omp parallel for 
     for(int p = 0; p < parSize ;  p++){
         int k_outer;
         initialiseAB(A,B,p*CHUNK_SIZE,p*CHUNK_SIZE+CHUNK_SIZE,order);
         initialiseAPSP(APSP,p*CHUNK_SIZE,p*CHUNK_SIZE+CHUNK_SIZE,order); 
         for(int k = 0 ; k < order-1 ; k++){
-            #pragma omp parallel for
+            #pragma omp parallel for num_threads(4)
             for(int i = 0; i < order ; i++){
                 for(auto n: neighbours[i]){
+                    //cout<<omp_get_num_threads()<<endl; 
                     for(int j = p*CHUNK_SIZE ; j < p*CHUNK_SIZE+CHUNK_SIZE ; j ++){
                         B[i][j] = B[i][j] || A[n][j]; 
                     }
@@ -104,7 +107,7 @@ pair<int, double> serailDividedAdjAPSP(int **graph, int order, vector<vector<int
                 }
             }
             num = 0; 
-            #pragma omp parallel for reduction(+:num)
+            #pragma omp parallel for reduction(+:num) num_threads(4)
             for(int i = 0; i < order; i++)
                 for(int j = p*CHUNK_SIZE ; j < p*CHUNK_SIZE+CHUNK_SIZE ; j ++){
                     if(B[i][j]==1){
@@ -166,7 +169,6 @@ int main(int argc, char *argv[]){
     }
 
     printf("The calculated error is %d",error); 
-
     return 0; 
 }
 
