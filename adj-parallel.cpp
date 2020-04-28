@@ -64,7 +64,7 @@ pair<int, double> serailAdjAPSP(int order, vector<vector<int> > &neighbours, boo
         distance = distance+(order * order - num); 
     }
     average_distance = (double)distance/((order-1)* order); 
-    cout<<diameter<<" "<<average_distance<<endl; 
+    //cout<<diameter<<" "<<average_distance<<endl; 
     return make_pair(diameter,average_distance); 
 }
 
@@ -104,7 +104,7 @@ pair<int, double> serailDividedAdjAPSP(int order, vector<vector<int> > &neighbou
     diameter = max(diameter,(k_outer+1)+1); 
     }
     average_distance = (double)distance/((order-1)* order); 
-    cout<<diameter<<" "<<average_distance<<endl; 
+    //cout<<diameter<<" "<<average_distance<<endl; 
     return make_pair(diameter,average_distance); 
 }
 
@@ -147,8 +147,8 @@ pair<int, double> parallelDividedAdjAPSP( int order,int chunk, vector<vector<int
     MPI_Allreduce(&distance, &average_distance, 1, MPI_DOUBLE, MPI_SUM ,MPI_COMM_WORLD);
     average_distance /= ((order-1)* order);
     average_distance +=1;  
-    if(rank == 0)
-        cout<<global_diam<<" "<<average_distance<<endl; 
+    // if(rank == 0)
+    //     cout<<global_diam<<" "<<average_distance<<endl; 
     return make_pair(global_diam,average_distance); 
 }
 
@@ -157,6 +157,11 @@ void get_file_name(string order, string degree);
 void getOptions(int argc, char** argv); 
 
 int main(int argc, char *argv[]){
+    //printf(" Order  Degree  Chunk_size Number_of_threads Time_Serial Time_OpenMP Time_MPI\n");
+    double time_Serial = 0.0; 
+    double time_OpenMP = 0.0; 
+    double time_MPI = 0.0; 
+    //printf("%10d %10f %10f %10f", p, time, flops, bandwidth);
     /*----Initialising openMPI-------*/ 
     MPI_Init(&argc, &argv); 
     int rank; 
@@ -181,13 +186,15 @@ int main(int argc, char *argv[]){
             if(S_flag){
                 tt = omp_get_wtime();
 	            pair<int, double> diamAvgDist = serailAdjAPSP(order, neighbours,A,B);
-	            printf("sequential-adj-apsp = %fs\n", omp_get_wtime() - tt);
+                time_Serial = omp_get_wtime() - tt; 
+	            //printf("sequential-adj-apsp = %fs\n", time_Serial);
             }
 
             if(O_flag){
                 tt = omp_get_wtime();
 	            pair<int, double> diamAvgDistDiv = serailDividedAdjAPSP(order, neighbours,A,B);
-	            printf("sequential-div-adj-apsp = %fs\n", omp_get_wtime() - tt); 
+                time_OpenMP = omp_get_wtime() - tt; 
+	            //printf("sequential-div-adj-apsp = %fs\n", time_OpenMP); 
             }
 
             for(int i = 0; i <order;i++){
@@ -217,8 +224,10 @@ int main(int argc, char *argv[]){
         tt = omp_get_wtime();
         parallelDividedAdjAPSP( order,chunk, neighbours, A_sub, B_sub); 
         MPI_Barrier(MPI_COMM_WORLD); 
-        if(rank==0)
-        printf("Parallel-div-adj-apsp = %fs\n", omp_get_wtime() - tt);
+        if(rank==0){
+            time_MPI =  omp_get_wtime() - tt; 
+            //printf("Parallel-div-adj-apsp = %fs\n", time_MPI);
+        }
 
         for(int i = 0 ; i < order ; i++){
             free(A_sub[i]);      
@@ -226,6 +235,10 @@ int main(int argc, char *argv[]){
         }
         free(A_sub);
         free(B_sub); 
+    }
+    if(rank==0){
+        printf(" Order  Degree  Chunk_size  Threads Time_Serial Time_OpenMP   Time_MPI\n");
+        printf("%5d %5d %10d %10d %12f %12f %12f\n",order,degree,CHUNK_SIZE,nT,time_Serial,time_OpenMP,time_MPI); 
     }
     MPI_Finalize();
     return 0; 
