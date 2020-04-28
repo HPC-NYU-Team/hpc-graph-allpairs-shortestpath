@@ -9,6 +9,8 @@
 int RANK;
 int PROCS;
 
+
+
 using namespace std;
 
 void getAllChildren(vector<vector<int>> &g, vector<int> &frontier, vector<int> &children, int* distances, int k){
@@ -28,7 +30,7 @@ void getAllChildren(vector<vector<int>> &g, vector<int> &frontier, vector<int> &
 void getAllChildrenParallel(vector<vector<int>> &g, vector<int> &frontier, vector<int> &children, int* distances, int k){
 	int count = 0;
 	vector<int> local_children = vector<int>{};
-	#pragma omp parallel private(local_children) num_threads(20)
+	#pragma omp parallel private(local_children) num_threads(10)
 	{
 	#pragma omp for nowait
         for(int i=0; i<frontier.size(); i++){
@@ -118,7 +120,7 @@ pair<float, float> parallelBfsApsp(vector<vector<int>> g){
 	float* diameter = new float[currSize];
 	float* distance = new float[currSize];
 	
-	#pragma omp parallel for num_threads(20)
+	#pragma omp parallel for num_threads(10)
 	for(int i=0; i<currSize; i++){
                 int* distances = bfsParallel(g, startSrc+i);
 		diameter[i] = *max_element(distances, distances + g.size());
@@ -144,10 +146,11 @@ int main(int argc, char *argv[]) {
 	MPI_Init(&argc, &argv);
 	MPI_Comm_size(MPI_COMM_WORLD, &PROCS);
 	MPI_Comm_rank(MPI_COMM_WORLD, &RANK);
-	string fileName = "n1024d4.random.edges"; 
-	int order = 1024;
-	vector<vector<int>> g(1024, vector<int>(4));
-	int gsize = 1024*4;
+	string fileName = "n8096d5.random.edges"; 
+	int order = 8096;
+	int degree = 5;
+	vector<vector<int>> g(order, vector<int>(degree));
+	int gsize = order*degree;
 	vector<int> newg;
 	if(RANK == 0){
 		g = getAdjacencyListVector(fileName,order);
@@ -159,7 +162,7 @@ int main(int argc, char *argv[]) {
 	MPI_Bcast(&newg[0], gsize, MPI_INT, 0, MPI_COMM_WORLD);
 	if(RANK != 0){
 		for(int i=0; i<newg.size(); i++){
-			g[i/4][i%4] = newg[i];
+			g[i/degree][i%degree] = newg[i];
 		}
 	}
 	double tt = omp_get_wtime();
