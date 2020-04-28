@@ -2,18 +2,15 @@
 #include <climits> 
 #include <omp.h>
 #include <mpi.h> 
+#include <cstring>
 #include <cmath>
 #include "graphGenerator.cpp"
-#define CHUNK_SIZE 5
 using namespace std; 
+int CHUNK_SIZE=5; 
+
 template <class T>
-void print(int order, T **A){
-    for(int i =  0 ; i<order; i++){    
-        for(int j = 0; j<order; j++)
-            cout<<A[i][j]<<" "; 
-        cout<<endl; 
-    }
-}
+void print(int order, T **A); 
+
 void initialiseAB(bool **A, bool **B, int r, int c, int offset, int arr_off){
     for(int i = 0; i < r; i++)
         for(int j = 0; j < c; j++){
@@ -28,7 +25,7 @@ void initialiseAB(bool **A, bool **B, int r, int c, int offset, int arr_off){
         }
 }
 
-void initialiseAPSP(int **APSP, int r, int c, int offset, int arr_off){
+void initialiseAPSPC(int **APSP, int r, int c, int offset, int arr_off){
     for(int i = 0; i < r; i++)
         for(int j = 0; j < c; j++){
             if(offset*c+j==r-1-i){
@@ -40,23 +37,27 @@ void initialiseAPSP(int **APSP, int r, int c, int offset, int arr_off){
         }
 }
 
-void initialiseAPSPparallel(int *APSP,int order,int chunk,int offset){
-   for(int i = 0; i < order; i++)
-        for(int j = 0; j < chunk; j++)
-        {    
-            if(offset*chunk+j==order-1-i){
-                APSP[i*chunk + j] = 0; 
+void initialiseAPSP(int *APSP,int r,int col_max,int c,int offset, int arr_off){
+   for(int i = 0; i < r; i++){
+       //cout<<endl;
+        for(int j = 0; j < c; j++)
+        {     
+            if(offset*c +j==r-1-i){
+                //cout<<i<<j<<" "; 
+                APSP[i*col_max + c*arr_off +j] = 0; 
             }
             else {
-                APSP[i*chunk + j] = INT_MAX;  
+                //cout<<"x"<<"  "; 
+                APSP[i*col_max + c*arr_off +j] = INT_MAX;  
             }
         } 
+   }
 }
 
-pair<int, double> serailAdjAPSP(int order, vector<vector<int> > &neighbours, int **APSP, bool **A, bool **B){
+pair<int, double> serailAdjAPSP(int order, vector<vector<int> > &neighbours, int *APSP, bool **A, bool **B){
 
     initialiseAB(A,B,order,order,0,0);
-    initialiseAPSP(APSP,order,order,0,0); 
+    initialiseAPSP(APSP,order,order,order,0,0); 
 
     int diameter = 1; 
     int distance = order * (order-1); 
@@ -76,8 +77,8 @@ pair<int, double> serailAdjAPSP(int order, vector<vector<int> > &neighbours, int
         for(int i = 0; i < order; i++)
             for(int j = 0; j < order ; j++){
                 if(B[i][j]==1){
-                    if(APSP[i][j] > k)
-                        APSP[i][j] = k+1; 
+                    if(APSP[i*order + j] > k)
+                        APSP[i*order + j] = k+1; 
                     num++;
                 }
             }
@@ -92,8 +93,10 @@ pair<int, double> serailAdjAPSP(int order, vector<vector<int> > &neighbours, int
     cout<<diameter<<" "<<average_distance<<endl; 
     return make_pair(diameter,average_distance); 
 }
-pair<int, double> serailDividedAdjAPSP(int order, vector<vector<int> > &neighbours, int **APSP, bool **A, bool **B){
+pair<int, double> serailDividedAdjAPSP(int order, vector<vector<int> > &neighbours, int *APSP, bool **A, bool **B){
     int parSize = order/CHUNK_SIZE; 
+    int rank; 
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     int diameter = 1; 
     int distance = order * (order-1); 
     double average_distance = 0.0; 
@@ -101,11 +104,18 @@ pair<int, double> serailDividedAdjAPSP(int order, vector<vector<int> > &neighbou
     for(int p = 0; p < parSize ;  p++){
         int k_outer;
         initialiseAB(A,B,order,CHUNK_SIZE,p,p);
-        initialiseAPSP(APSP,order,CHUNK_SIZE,p,p);
-        //initialiseAB(A,B,p*CHUNK_SIZE,p*CHUNK_SIZE+CHUNK_SIZE,order);
-        //initialiseAPSP(APSP,p*CHUNK_SIZE,p*CHUNK_SIZE+CHUNK_SIZE,order); 
+        initialiseAPSP(APSP,order,order,CHUNK_SIZE,p,p);
+        // if(rank == 0){
+        //     for(int i = 0 ; i < order ; i++){
+        //         cout<<endl<<i<<":"; 
+        //         for(int j = p*CHUNK_SIZE; j < p*CHUNK_SIZE + CHUNK_SIZE ; j++){
+        //             cout<<APSP[i*order+j]<<" "; 
+        //         }
+        //     }
+
+        // }
         for(int k = 0 ; k < order-1 ; k++){
-            #pragma omp parallel for num_threads(4)
+            #pragma omp parallel for num_threads(8)
             for(int i = 0; i < order ; i++){
                 for(auto n: neighbours[i]){
                     for(int j = p*CHUNK_SIZE ; j < p*CHUNK_SIZE+CHUNK_SIZE ; j ++){
@@ -114,12 +124,12 @@ pair<int, double> serailDividedAdjAPSP(int order, vector<vector<int> > &neighbou
                 }
             }
             num = 0; 
-            #pragma omp parallel for reduction(+:num) num_threads(4)
+            #pragma omp parallel for reduction(+:num) num_threads(8)
             for(int i = 0; i < order; i++)
                 for(int j = p*CHUNK_SIZE ; j < p*CHUNK_SIZE+CHUNK_SIZE ; j ++){
                     if(B[i][j]==1){
-                        if(APSP[i][j] > k)
-                            APSP[i][j] = k+1; 
+                        if(APSP[i*order + j] > k)
+                            APSP[i*order + j] = k+1; 
                         num++;
                     }
                 }
@@ -146,9 +156,16 @@ pair<int, double> parallelDividedAdjAPSP( int order,int chunk, vector<vector<int
     int rank; 
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     initialiseAB(A,B,order,chunk,rank,0);
-    //initialiseAPSP(APSP,order,chunk,rank,0);
-    //initialiseABparallel(A,B,chunk, rank, order); 
-    initialiseAPSPparallel(APSP, order , chunk , rank); 
+    initialiseAPSP(APSP,order , chunk , chunk, rank,0); 
+        //     if(rank == 1){
+        //     for(int i = 0 ; i < order ; i++){
+        //         cout<<endl<<i<<":"; 
+        //         for(int j = 0; j < chunk ; j++){
+        //             cout<<APSP[i*order+j]<<" "; 
+        //         }
+        //     }
+
+        // }
     for(int k = 0 ; k < order-1 ; k++){
         #pragma omp parallel for num_threads(4)
         for(int i = 0; i < order ; i++){
@@ -181,58 +198,87 @@ pair<int, double> parallelDividedAdjAPSP( int order,int chunk, vector<vector<int
     cout<<diameter<<" "<<average_distance<<endl; 
     return make_pair(global_diam,average_distance); 
 }
+void get_file_name(string &file , string order, string degree); 
 
 int main(int argc, char *argv[]){
+    /*----Initialising openMPI-------*/ 
     MPI_Init(&argc, &argv); 
     int rank; 
     MPI_Comm_rank(MPI_COMM_WORLD , &rank);
-    string fileName = "n10d3.random.edges"; 
-    int order  = 10;  
-     
-    int **APSP_serial = new int*[order]; 
-    for(int i = 0; i < order; i++)
-        APSP_serial[i] = new int[order];
 
-    int **APSP_serial_div = new int*[order]; 
-    for(int i = 0; i < order; i++)
-        APSP_serial_div[i] = new int[order];  
-
-    bool **A = new bool*[order]; 
-    for(int i = 0; i < order; i++)
-        A[i] = new bool[order]; 
-
-    bool **B = new bool*[order]; 
-    for(int i = 0; i < order; i++)
-        B[i] = new bool[order]; 
-
-    
-    vector<vector<int> > neighbours = getAdjacencyListVector(fileName,order);
-    if(rank == 0){
-    double tt = omp_get_wtime();
-	pair<int, double> diamAvgDist = serailAdjAPSP(order, neighbours, APSP_serial,A,B);
-	printf("sequential-adj-apsp = %fs\n", omp_get_wtime() - tt);
-
-    tt = omp_get_wtime();
-	pair<int, double> diamAvgDistDiv = serailDividedAdjAPSP(order, neighbours, APSP_serial_div,A,B);
-	printf("sequential-div-adj-apsp = %fs\n", omp_get_wtime() - tt);
-
-    int error; 
-    for(int i = 0; i < order; i++){
-        for(int j = 0; j <  order; j++){
-            error += fabs(APSP_serial[i][j]-APSP_serial_div[i][j]);
-        }
+    /*----Setting parameters-------*/ 
+    string fileName; 
+    int order = 10; 
+    int degree = 3; 
+    if(argc < 4 ){
+        if(rank==0)
+            cout<<"Too few arguments, taking default values"<<endl; 
+        fileName = "n10d3.random.edges"; 
     }
+    else{
+        get_file_name(fileName , argv[1], argv[2]); 
+        order = atoi(argv[1]);
+        degree = atoi(argv[2]);  
+        CHUNK_SIZE = atoi(argv[3]); 
+        //cout<<fileName; 
+    }
+ 
+    /*----Getting neighbors-------*/ 
+    vector<vector<int> > neighbours = getAdjacencyListVector(fileName,order);
+    int *APSP_serial; 
+    if(rank == 0){
+        // int **APSP_serial = new int*[order]; 
+        // for(int i = 0; i < order; i++)
+        //     APSP_serial[i] = new int[order];
+        APSP_serial = new int[order*order]; 
 
-    printf("The calculated error is %d\n",error); 
+        int *APSP_serial_div = new int[order*order]; 
+        // int **APSP_serial_div = new int*[order]; 
+        // for(int i = 0; i < order; i++)
+        //     APSP_serial_div[i] = new int[order];  
+
+        bool **A = new bool*[order]; 
+        for(int i = 0; i < order; i++)
+            A[i] = new bool[order]; 
+
+        bool **B = new bool*[order]; 
+        for(int i = 0; i < order; i++)
+            B[i] = new bool[order]; 
+    
+        double tt = omp_get_wtime();
+	    pair<int, double> diamAvgDist = serailAdjAPSP(order, neighbours, APSP_serial,A,B);
+	    printf("sequential-adj-apsp = %fs\n", omp_get_wtime() - tt);
+
+        tt = omp_get_wtime();
+	    pair<int, double> diamAvgDistDiv = serailDividedAdjAPSP(order, neighbours, APSP_serial_div,A,B);
+	    printf("sequential-div-adj-apsp = %fs\n", omp_get_wtime() - tt);
+
+        int error; 
+        for(int i = 0; i < order; i++){
+            for(int j = 0; j <  order; j++){
+                error += fabs(APSP_serial[i*order + j]-APSP_serial_div[i*order + j]);
+            }
+        }
+
+        printf("The calculated error is %d\n",error); 
+        for(int i = 0; i <order;i++){
+            free(A[i]); 
+            free(B[i]); 
+        }
+        free(A); 
+        free(B); 
+        free(APSP_serial_div);
+
     } 
     MPI_Barrier(MPI_COMM_WORLD); 
+    
     //MPI part 
     {
-        cout<<"\n\n Final computation\n\n"; 
+        //cout<<"\n\n Final computation\n\n"; 
         int npes; 
         MPI_Comm_size(MPI_COMM_WORLD , &npes);
         int chunk = order/npes; 
-
+        //cout<<"ORDER!!"<<order; 
         bool **A_sub = new bool*[order]; 
         for(int i = 0; i < order; i++)
             A_sub[i] = new bool[chunk]; 
@@ -243,10 +289,11 @@ int main(int argc, char *argv[]){
 
         int *APSP_parallel_div_sub = new int[order*chunk]; 
 
-        parallelDividedAdjAPSP( order,chunk, neighbours, APSP_parallel_div_sub, A_sub, B_sub);  
+        parallelDividedAdjAPSP( order,chunk, neighbours, APSP_parallel_div_sub, A_sub, B_sub); 
+        // cout<<"HERE";  
         MPI_Barrier(MPI_COMM_WORLD); 
-
-        MPI_Send(APSP_parallel_div_sub, chunk*order , MPI_INT,0,0,MPI_COMM_WORLD); 
+        if(rank!=0)
+            MPI_Send(APSP_parallel_div_sub, chunk*order , MPI_INT,0,0,MPI_COMM_WORLD); 
         if(rank == 0){
             
             int **APSP_parallel_div = new int*[order]; 
@@ -278,19 +325,38 @@ int main(int argc, char *argv[]){
                 //cout<<endl;
                 for(int j = 0; j <  order; j++){
                     //cout<<APSP_serial[i][j]<<" "; 
-                    error += fabs(APSP_serial[i][j]-APSP_parallel_div[i][j]);
+                    error += fabs(APSP_serial[i*order + j]-APSP_parallel_div[i][j]);
                 }
             }
             printf("The calculated error is %d\n",error);
+            
+            free(APSP_serial); 
         }
 
         
     }
     MPI_Finalize();
+    
     return 0; 
 }
 
 
 
 
+template <class T>
+void print(int order, T **A){
+    for(int i =  0 ; i<order; i++){    
+        for(int j = 0; j<order; j++)
+            cout<<A[i][j]<<" "; 
+        cout<<endl; 
+    }
+} 
 
+void get_file_name(string &file , string order, string degree){
+    file = "n";
+    file += order; 
+    file += "d"; 
+    file += degree;
+    file += ".random.edges"; 
+
+}
