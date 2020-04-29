@@ -295,12 +295,9 @@ int main(int argc, char *argv[]){
             printf("The calculated error is %d\n",error);
             
             free(APSP_serial); 
-        }
-
-        
+        }      
     }
     MPI_Finalize();
-    
     return 0; 
 }
 
@@ -322,5 +319,4 @@ void get_file_name(string &file , string order, string degree){
     file += "d"; 
     file += degree;
     file += ".random.edges"; 
-
 }
