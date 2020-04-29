@@ -1,0 +1,27 @@
+#!/bin/bash
+#SBATCH --nodes=10
+#SBATCH --tasks-per-node=1
+#SBATCH --cpus-per-task=10
+#SBATCH --time=1:00:00
+#SBATCH --output=slurm_%j.out
+
+
+module purge
+module load openmpi/gnu/4.0.2
+SRCDIR=$HOME/hpc/hpc-graph-allpairs-shortestpath
+cd $SRCDIR
+mpic++  bfsApspMPI.cpp -o bfsApspMPI -fopenmp
+export OMP_NUM_THREADS=1
+mpirun  --mca btl '^openib' --np 1  bfsApspMPI --serial -t 1 -p 1 -o 1024 -d 4
+
+for (( i = 1; i <= 10; i++ ))      ### Outer for loop ###
+do
+
+    for (( j = 1 ; j <= 10; j++ )) ### Inner for loop ###
+    do
+	export OMP_NUM_THREADS=$j
+        mpirun  --mca btl '^openib' --np $i  bfsApspMPI -t $j -p $i -o 1024 -d 4 
+    done
+
+  echo "" #### print the new line ###
+done
