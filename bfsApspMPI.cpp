@@ -121,6 +121,21 @@ pair<float, float> serialBfsApsp(vector<vector<int>> g){
 }
 
 pair<float, float> parallelBfsApsp(vector<vector<int>> g){
+	if(PROCS == 1){
+		int source = 0;
+		float* diameter = new float[g.size()];
+		float* distance = new float[g.size()];
+		
+		#pragma omp parallel for num_threads(THREADS)
+		for(int source=0; source<g.size(); source++){
+			int* distances = bfsParallel(g, source);	
+			diameter[source] = *max_element(distances, distances + g.size());
+			distance[source] = accumulate(distances, distances + g.size(), 0.0) / g.size();
+		}
+		float global_max_dia = *max_element(diameter, diameter + g.size());
+		float global_avg_dist = (accumulate(distance, distance + g.size(), 0.0) / g.size());
+		return make_pair(global_max_dia, global_avg_dist);
+	}
 	int chunkSize = ceil(1.0*g.size()/PROCS);
 	int startSrc = chunkSize * RANK;
         int endSrc   = chunkSize * (RANK+1);
@@ -235,11 +250,14 @@ int main(int argc, char *argv[]) {
     
 	vector<vector<int>> g(order, vector<int>(degree));
 	int gsize = order*degree;
+
+	if(RANK == 0){
+		get_file_name(fileName, order, degree); 
+	    g = getAdjacencyListVector(fileName,order);
+	}
 		
 	// If Serial Run	
 	if(serial && RANK == 0){
-		get_file_name(fileName, order, degree); 
-	    g = getAdjacencyListVector(fileName,order);
 		double tt = omp_get_wtime();
 		pair<float, float> res = serialBfsApsp(g);
 		double timeTaken = omp_get_wtime() - tt;
@@ -265,7 +283,6 @@ int main(int argc, char *argv[]) {
 	MPI_Barrier(MPI_COMM_WORLD); 
 	double tt2 = MPI_Wtime();
 	pair<float, float> res = parallelBfsApsp(g);
-	//printf("PROC:%d parallel-bfs-apsp = %fs\n", RANK, MPI_Wtime() - tt);
 	if(RANK == 0){
 		double timeTaken = MPI_Wtime() - tt2;
 		printf("Parallel: Procs= %d\tThreads = %d\tOrder = %d\t Degree = %d\tMaxDia = %f\tAvgDist = %f\tTime = %f\n", procs, threads, order, degree, res.first, res.second, timeTaken);
@@ -274,7 +291,7 @@ int main(int argc, char *argv[]) {
 	
 	MPI_Finalize();
 	return 0;
-	
+
 }
 
 
