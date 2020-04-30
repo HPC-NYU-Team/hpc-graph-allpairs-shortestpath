@@ -17,14 +17,24 @@ double g_dist = 0.0;
 int g_diam = 0;
 bool S_flag = false; 
 bool O_flag = false; 
-bool M_flag = false; 
+bool M_flag = true; 
 string fileName = ""; 
-
+__device__ int number; 
 //mpirun --mca btl_tcp_if_include eth0 --mca btl '^openib' --np 8 mpi 8192 5 1024
-
-__global__ void logicalkernel(double *A, double *B, int *neighbours, int order ,int degree) {
+__global__ void reduction(bool *B,int number,int order){
+	int num = 0; 
+	int idx = blockIdx.x * blockDim.x + threadIdx.x; 
+	if(idx<order*order){
+		//for(int i = 0 ; i<order; i++)
+		//	if(B[idx*order+i]==1)
+		//	num ++; //= B[idx*order + i]; 
+		if(B[idx]==1)
+		atomicAdd(&number,1); 
+	}
+}
+__global__ void logicalkernel(bool *A, bool *B, int *neighbours, int order ,int degree) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if(idx <order)
+    if(idx <order){
         for(int i=0 ; i <  degree ; i++){
             int n = neighbours[idx*degree + i ]; 
             for(int j = 0; j < order; j++){
@@ -89,13 +99,14 @@ pair<int, double> serailAdjAPSP(int order, vector<vector<int> > &neighbours, boo
         distance = distance+(order * order - num); 
     }
     average_distance = (double)distance/((order-1)* order); 
-    //cout<<diameter<<" "<<average_distance<<endl; 
+    //cout<<diameter<<" "<<average_distance<<endl;
+	cout<<"DIAM"<<diameter<<endl;  
     return make_pair(diameter,average_distance); 
 }
 
 pair<int, double> cudaAPSP(int order, bool *A_host, bool*B_host,bool* A_device, bool *B_device, int* nbr , int* nbr_device ){
     cudaMemcpy(nbr, nbr_device, order*degree*sizeof(int), cudaMemcpyHostToDevice);
-    initialiseABcuda(A,B, order); 
+    initialiseABcuda(A_host,B_host, order); 
     cudaMemcpy(A_host,A_device, order*order*sizeof(bool), cudaMemcpyHostToDevice); 
     cudaMemcpy(B_host,B_device, order*order*sizeof(bool), cudaMemcpyHostToDevice); 
     int diameter = 1; 
@@ -112,29 +123,34 @@ pair<int, double> cudaAPSP(int order, bool *A_host, bool*B_host,bool* A_device, 
         //         }
         //     }
         // }
-        num = 0; 
-        #pragma omp parallel for reduction(+:num) num_threads(nT)
-        for(int i = 0; i < order; i++)
-            for(int j = 0; j < order ; j++){
-                if(B[i][j]==1){
-                    num++;
-                }
-            }
+        num = 0;
+	cudaDeviceSynchronize();
+	cudaMemcpyToSymbol(number, &num, sizeof(int));
+	reduction<<<order*order/1024+1, 1024>>>(B_device,number,order); 
+ 	cudaDeviceSynchronize(); 
+	cudaMemcpyFromSymbol(&num,number, sizeof(int)); 
+        //#pragma omp parallel for reduction(+:num) num_threads(nT)
+        //for(int i = 0; i < order; i++)
+        //    for(int j = 0; j < order ; j++){
+        //        if(B[i][j]==1){
+        //            num++;
+        //        }
+        //    }
         if(num == order*order) break; 
-        cudaMemcpy(A_device,B_device,order*order*sizeof(boolean),cudaMemcpyDeviceToDevice )
+        cudaMemcpy(A_device,B_device,order*order*sizeof(bool),cudaMemcpyDeviceToDevice ); 
         //swap(A,B); 
         diameter++; 
         distance = distance+(order * order - num); 
     }
-    average_distance = (double)distance/((order-1)* order); 
+    average_distance = (double)distance/((order-1)* order);
+    g_diam = diameter; 
+    g_dist = average_distance;  
     //cout<<diameter<<" "<<average_distance<<endl; 
     return make_pair(diameter,average_distance); 
 }
 
 pair<int, double> serailDividedAdjAPSP(int order, vector<vector<int> > &neighbours,  bool **A, bool **B){
     int parSize = order/CHUNK_SIZE; 
-    int rank; 
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     int diameter = 1; 
     int distance = order * (order-1); 
     double average_distance = 0.0; 
@@ -183,7 +199,6 @@ int main(int argc, char *argv[]){
     
     /*----Setting parameters-------*/ 
     getOptions(argc, argv); 
- 
     /*----Getting neighbors-------*/ 
     vector<vector<int> > neighbours = getAdjacencyListVector(fileName,order);
     //int [] [] neighbours; 
@@ -232,7 +247,7 @@ int main(int argc, char *argv[]){
             }
         //change this to an array
         bool *A_host = new bool[order*order]; 
-        bool *B_host = new bool[oder*order];
+        bool *B_host = new bool[order*order];
         int *nbr_device; 
         bool *A_device, *B_device; 
         cudaMalloc(&nbr_device, order*degree*sizeof(int));  
@@ -268,7 +283,7 @@ void get_file_name( string order, string degree){
 }
 
 void getOptions(int argc, char** argv){
-    int opt;  
+    int opt;
     int arg_number=1; 
     string flags; 
     while((opt = getopt(argc, argv, "o:d:c:t:f:")) != -1)  
