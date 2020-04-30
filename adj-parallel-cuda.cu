@@ -17,19 +17,26 @@ double g_dist = 0.0;
 int g_diam = 0;
 bool S_flag = false; 
 bool O_flag = false; 
-bool M_flag = true; 
+bool M_flag = false; 
 string fileName = ""; 
-__device__ int number; 
+//__device__ int number; 
 //mpirun --mca btl_tcp_if_include eth0 --mca btl '^openib' --np 8 mpi 8192 5 1024
-__global__ void reduction(bool *B,int number,int order){
-	int num = 0; 
+__global__ void reduction(bool *B,int *number,int order){
+	int num = 0;
 	int idx = blockIdx.x * blockDim.x + threadIdx.x; 
-	if(idx<order*order){
-		//for(int i = 0 ; i<order; i++)
-		//	if(B[idx*order+i]==1)
-		//	num ++; //= B[idx*order + i]; 
-		if(B[idx]==1)
-		atomicAdd(&number,1); 
+
+	//if(idx==0) printf("ORDER%d\n",order); 
+	//printf("IDX%d\n",idx); 
+	if(idx<order){
+		
+		for(int i = 0 ; i<order; i++)
+			if(B[idx*order+i]==1)
+				num ++; //= B[idx*order + i]; 
+		//if(B[idx]==1)
+		//printf("CUDANUM%d\n",num);
+		number[idx] = num;  
+		//atomicAdd(number,num);
+		//printf("NUMBER%d\n",number);//<<endl;  
 	}
 }
 __global__ void logicalkernel(bool *A, bool *B, int *neighbours, int order ,int degree) {
@@ -38,12 +45,13 @@ __global__ void logicalkernel(bool *A, bool *B, int *neighbours, int order ,int 
         for(int i=0 ; i <  degree ; i++){
             int n = neighbours[idx*degree + i ]; 
             for(int j = 0; j < order; j++){
-                B[i * order+ j] = B[i*order+j] || A[n*order+j]; 
+                B[idx * order+ j] = B[idx*order+j] || A[n*order+j]; 
             }
         }
     }
 }
 void initialiseABcuda(bool *A,bool *B, int order){
+    #pragma omp parallel for num_threads(nT)
     for(int i = 0; i < order; i++)
     for(int j = 0; j < order; j++){
         if(j==order-1-i){
@@ -73,6 +81,7 @@ void initialiseAB(bool **A, bool **B, int r, int c, int offset, int arr_off){
 
 pair<int, double> serailAdjAPSP(int order, vector<vector<int> > &neighbours, bool **A, bool **B){
     initialiseAB(A,B,order,order,0,0);
+	
     int diameter = 1; 
     int distance = order * (order-1); 
     double average_distance = 0.0; 
@@ -104,38 +113,41 @@ pair<int, double> serailAdjAPSP(int order, vector<vector<int> > &neighbours, boo
     return make_pair(diameter,average_distance); 
 }
 
-pair<int, double> cudaAPSP(int order, bool *A_host, bool*B_host,bool* A_device, bool *B_device, int* nbr , int* nbr_device ){
-    cudaMemcpy(nbr, nbr_device, order*degree*sizeof(int), cudaMemcpyHostToDevice);
+pair<int, double> cudaAPSP(int order, bool *A_host, bool*B_host,bool* A_device, bool *B_device, int* nbr , int* nbr_device, int *number,int *number_device ){
+    //int *number_device;
+    //int *number =(int*)malloc(order*sizeof(int)); 
+    //cudaMalloc(&number_device, sizeof(int));
+    //cudaMalloc(&number_device, sizeof(int)*order);	 
+    cudaMemcpy(nbr_device, nbr, order*degree*sizeof(int), cudaMemcpyHostToDevice);
     initialiseABcuda(A_host,B_host, order); 
-    cudaMemcpy(A_host,A_device, order*order*sizeof(bool), cudaMemcpyHostToDevice); 
-    cudaMemcpy(B_host,B_device, order*order*sizeof(bool), cudaMemcpyHostToDevice); 
+    cudaMemcpy(A_device,A_host, order*order*sizeof(bool), cudaMemcpyHostToDevice); 
+    cudaMemcpy(B_device,B_host, order*order*sizeof(bool), cudaMemcpyHostToDevice); 
     int diameter = 1; 
     int distance = order * (order-1); 
     double average_distance = 0.0; 
 
     int num; 
     for(int k = 0 ; k < order-1 ; k++){
-        logicalkernel<<<order/1024 + 1, 1024>>>(A_device,B_device,nbr_device,order,degree); 
-        // for(int i = 0; i < order ; i++){
-        //     for(auto n: neighbours[i]){
-        //         for(int j = 0 ; j < order ; j ++){
-        //             B[i][j] = B[i][j] || A[n][j]; 
-        //         }
-        //     }
-        // }
+        logicalkernel<<< order/64 +1, 64>>>(A_device,B_device,nbr_device,order,degree); 
         num = 0;
 	cudaDeviceSynchronize();
-	cudaMemcpyToSymbol(number, &num, sizeof(int));
-	reduction<<<order*order/1024+1, 1024>>>(B_device,number,order); 
+	//cudaMemcpy(number_device, &num, sizeof(int),cudaMemcpyHostToDevice);
+	reduction<<<order/128+1, 128>>>(B_device,number_device,order); 
  	cudaDeviceSynchronize(); 
-	cudaMemcpyFromSymbol(&num,number, sizeof(int)); 
+	cudaMemcpy(number,number_device, order*sizeof(int),cudaMemcpyDeviceToHost); 
+	//cout<<"NUM"<<num<<endl; 
+	//cudaMemcpy(B_);
+	//cudaMemcpy(B_host,B_device, order*order*sizeof(bool),cudaMemcpyDeviceToHost);
         //#pragma omp parallel for reduction(+:num) num_threads(nT)
         //for(int i = 0; i < order; i++)
         //    for(int j = 0; j < order ; j++){
-        //        if(B[i][j]==1){
+        //        if(B_host[i*order+j]==1){
         //            num++;
         //        }
-        //    }
+        //   }
+	#pragma omp parallel for reduction(+:num) num_threads(nT)
+	for(int i = 0 ; i < order ; i++)
+		num += number[i]; 
         if(num == order*order) break; 
         cudaMemcpy(A_device,B_device,order*order*sizeof(bool),cudaMemcpyDeviceToDevice ); 
         //swap(A,B); 
@@ -253,17 +265,20 @@ int main(int argc, char *argv[]){
         cudaMalloc(&nbr_device, order*degree*sizeof(int));  
         cudaMalloc(&A_device, order*order*sizeof(bool)); 
         cudaMalloc(&B_device, order*order*sizeof(bool)); 
-        
+        int *number_device;
+    	int *number =(int*)malloc(order*sizeof(int));
+    	//cudaMalloc(&number_device, sizeof(int));
+	cudaMalloc(&number_device, sizeof(int)*order);
         tt = omp_get_wtime();
-        cudaAPSP(order,A_host,B_host,A_device,B_device,nbr,nbr_device);
+        cudaAPSP(order,A_host,B_host,A_device,B_device,nbr,nbr_device,number,number_device);
         time_cuda =  omp_get_wtime() - tt; 
             //printf("Parallel-div-adj-apsp = %fs\n", time_MPI);
         free(A_host);
         free(B_host); 
     }
 
-    printf(" Order  Degree  Chunk_size  Threads Time_Serial Time_OpenMP   Time_MPI  Dist Diam\n");
-    printf("%5d %5d %10d %10d %12f %12f %12f %12f %12d\n",order,degree,CHUNK_SIZE,nT,time_Serial,time_OpenMP,time_cuda,g_dist,g_diam); 
+    printf(" Order  Degree  Chunk_size  Threads Time_Serial Time_OpenMP   Time_MPI  Dist \t Diam\n");
+    printf("%5d %5d %10d %10d %11f %11f %11f %7f %7d\n",order,degree,CHUNK_SIZE,nT,time_Serial,time_OpenMP,time_cuda,g_dist,g_diam); 
     
 
     return 0; 
