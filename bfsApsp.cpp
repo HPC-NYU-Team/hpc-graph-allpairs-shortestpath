@@ -5,6 +5,7 @@
 #include <numeric>
 
 using namespace std;
+int THREADS = 1;
 
 void getAllChildren(vector<vector<int>> &g, vector<int> &frontier, vector<int> &children, int* distances, int k){
 	//printf("%d\n", frontier.size());
@@ -23,7 +24,7 @@ void getAllChildren(vector<vector<int>> &g, vector<int> &frontier, vector<int> &
 void getAllChildrenParallel(vector<vector<int>> &g, vector<int> &frontier, vector<int> &children, int* distances, int k){
 	int count = 0;
 	vector<int> local_children = vector<int>{};
-	#pragma omp parallel private(local_children) num_threads(10)
+	#pragma omp parallel private(local_children) num_threads(THREADS)
 	{
 	#pragma omp for nowait
         for(int i=0; i<frontier.size(); i++){
@@ -97,7 +98,7 @@ void parallelBfsApsp(vector<vector<int>> g){
 	float* diameter = new float[g.size()];
 	float* distance = new float[g.size()];
 	
-	#pragma omp parallel for num_threads(10)
+	#pragma omp parallel for num_threads(THREADS)
 	for(int source=0; source<g.size(); source++){
 		int* distances = bfsParallel(g, source);	
 		diameter[source] = *max_element(distances, distances + g.size());
@@ -111,8 +112,10 @@ void parallelBfsApsp(vector<vector<int>> g){
 
 int main(int argc, char *argv[]) {
 	
-	string fileName = "n8096d5.random.edges"; 
-	int order = 8096;
+	string fileName = "n1024d4.random.edges"; 
+	int order = 1024;
+
+	THREADS = atoi(argv[1]);
 	
 	vector<vector<int>> g = getAdjacencyListVector(fileName,order); 
 
