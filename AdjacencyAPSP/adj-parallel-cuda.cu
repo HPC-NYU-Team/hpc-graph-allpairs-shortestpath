@@ -122,7 +122,7 @@ pair<int, double> cudaAPSP(int order, bool *A_host, bool*B_host,bool* A_device, 
                 }
             }
         if(num == order*order) break; 
-        cudaMemcpy(A_device,B_device,order*order*sizeof(boolean),cudaMemcpyDeviceToDevice )
+        cudaMemcpy(A_device,B_device,order*order*sizeof(bool),cudaMemcpyDeviceToDevice )
         //swap(A,B); 
         diameter++; 
         distance = distance+(order * order - num); 
