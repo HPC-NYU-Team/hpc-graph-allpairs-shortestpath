@@ -27,15 +27,17 @@ def main(args):
 	
 	low_diam, low_aspl = lower_bound_of_diam_aspl(nnodes, degree)
 	g = nx.random_regular_graph(degree, nnodes, 0)
+	connected = False
 	if nx.is_connected(g):
 		hops = nx.shortest_path_length(g, weight=None)
 		diam, aspl = 0,0#max_avg_for_matrix(hops)
+		connected = True
 	else:
 		diam, aspl = float("inf"), float("inf")
 	print("{}\t{}\t{}\t{}\t{}\t{}\t{}%".format(nnodes, degree, diam, aspl, diam - low_diam, aspl - low_aspl, 100 * (aspl - low_aspl) / low_aspl))
-	
-	basename = "n{}d{}.random".format(nnodes, degree)
-	save_edges(g, basename + ".edges")
+	if connected:
+		basename = "n{}d{}.random".format(nnodes, degree)
+		save_edges(g, basename + ".edges")
 # 	save_image(g, basename + ".png")
 # 	save_json(author, email, text1, basename + ".edges", basename + ".json")
 	return
