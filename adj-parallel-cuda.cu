@@ -19,6 +19,17 @@ bool S_flag = false;
 bool O_flag = false; 
 bool M_flag = false; 
 string fileName = ""; 
+
+#define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
+inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true)
+{
+   if (code != cudaSuccess)
+   {
+      fprintf(stderr,"GPUassert: %s %s %d\n", cudaGetErrorString(code), file, line);
+      if (abort) exit(code);
+   }
+}
+
 //__device__ int number; 
 //mpirun --mca btl_tcp_if_include eth0 --mca btl '^openib' --np 8 mpi 8192 5 1024
 __global__ void reduction(bool *B,int *number,int order){
@@ -118,10 +129,10 @@ pair<int, double> cudaAPSP(int order, bool *A_host, bool*B_host,bool* A_device, 
     //int *number =(int*)malloc(order*sizeof(int)); 
     //cudaMalloc(&number_device, sizeof(int));
     //cudaMalloc(&number_device, sizeof(int)*order);	 
-    cudaMemcpy(nbr_device, nbr, order*degree*sizeof(int), cudaMemcpyHostToDevice);
+    gpuErrchk(cudaMemcpy(nbr_device, nbr, order*degree*sizeof(int), cudaMemcpyHostToDevice));
     initialiseABcuda(A_host,B_host, order); 
-    cudaMemcpy(A_device,A_host, order*order*sizeof(bool), cudaMemcpyHostToDevice); 
-    cudaMemcpy(B_device,B_host, order*order*sizeof(bool), cudaMemcpyHostToDevice); 
+    gpuErrchk(cudaMemcpy(A_device,A_host, order*order*sizeof(bool), cudaMemcpyHostToDevice)); 
+    gpuErrchk(cudaMemcpy(B_device,B_host, order*order*sizeof(bool), cudaMemcpyHostToDevice)); 
     int diameter = 1; 
     int distance = order * (order-1); 
     double average_distance = 0.0; 
@@ -134,7 +145,7 @@ pair<int, double> cudaAPSP(int order, bool *A_host, bool*B_host,bool* A_device, 
 	//cudaMemcpy(number_device, &num, sizeof(int),cudaMemcpyHostToDevice);
 	reduction<<<order/128+1, 128>>>(B_device,number_device,order); 
  	cudaDeviceSynchronize(); 
-	cudaMemcpy(number,number_device, order*sizeof(int),cudaMemcpyDeviceToHost); 
+	gpuErrchk(cudaMemcpy(number,number_device, order*sizeof(int),cudaMemcpyDeviceToHost)); 
 	//cout<<"NUM"<<num<<endl; 
 	//cudaMemcpy(B_);
 	//cudaMemcpy(B_host,B_device, order*order*sizeof(bool),cudaMemcpyDeviceToHost);
@@ -149,7 +160,7 @@ pair<int, double> cudaAPSP(int order, bool *A_host, bool*B_host,bool* A_device, 
 	for(int i = 0 ; i < order ; i++)
 		num += number[i]; 
         if(num == order*order) break; 
-        cudaMemcpy(A_device,B_device,order*order*sizeof(bool),cudaMemcpyDeviceToDevice ); 
+        gpuErrchk(cudaMemcpy(A_device,B_device,order*order*sizeof(bool),cudaMemcpyDeviceToDevice )); 
         //swap(A,B); 
         diameter++; 
         distance = distance+(order * order - num); 
@@ -262,17 +273,20 @@ int main(int argc, char *argv[]){
         bool *B_host = new bool[order*order];
         int *nbr_device; 
         bool *A_device, *B_device; 
-        cudaMalloc(&nbr_device, order*degree*sizeof(int));  
-        cudaMalloc(&A_device, order*order*sizeof(bool)); 
-        cudaMalloc(&B_device, order*order*sizeof(bool)); 
+        gpuErrchk(cudaMalloc(&nbr_device, order*degree*sizeof(int)));  
+        gpuErrchk(cudaMalloc(&A_device, order*order*sizeof(bool))); 
+        gpuErrchk(cudaMalloc(&B_device, order*order*sizeof(bool))); 
         int *number_device;
     	int *number =(int*)malloc(order*sizeof(int));
     	//cudaMalloc(&number_device, sizeof(int));
-	cudaMalloc(&number_device, sizeof(int)*order);
+	gpuErrchk(cudaMalloc(&number_device, sizeof(int)*order));
         tt = omp_get_wtime();
         cudaAPSP(order,A_host,B_host,A_device,B_device,nbr,nbr_device,number,number_device);
         time_cuda =  omp_get_wtime() - tt; 
             //printf("Parallel-div-adj-apsp = %fs\n", time_MPI);
+        cudaFree(nbr_device);
+	cudaFree(A_device);
+	cudaFree(B_device);
         free(A_host);
         free(B_host); 
     }

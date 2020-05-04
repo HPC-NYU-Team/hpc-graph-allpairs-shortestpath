@@ -11,15 +11,14 @@ module load openmpi/gnu/4.0.2
 SRCDIR=$HOME/hpc/hpc-graph-allpairs-shortestpath
 cd $SRCDIR
 mpic++  bfsApspMPI.cpp -o bfsApspMPI -fopenmp
-mpirun  --mca btl_tcp_if_include eth0 --mca btl '^openib' --np 1  --bind-to none -x OMP_NUM_THREADS=$j bfsApspMPI --serial -t 1 -p 1 -o 1024 -d 4
-export OMP_NUM_THREADS=1
+#mpirun  --mca btl_tcp_if_include eth0  --np 1  --bind-to none -x OMP_NUM_THREADS=$j bfsApspMPI --serial -t 1 -p 1 -o 10000 -d 5
 
-for (( i = 1; i <= 10; i++ ))      ### Outer for loop ###
+for (( i = 10; i <= 30; i++ ))      ### Outer for loop ###
 do
 
-    for (( j = 1 ; j <= 10; j++ )) ### Inner for loop ###
+    for (( j = 4 ; j <= 4; j++ )) ### Inner for loop ###
     do
-        mpirun --mca btl_tcp_if_include eth0 --mca btl '^openib' --bind-to none -x OMP_NUM_THREADS=$j --np $i bfsApspMPI -t $j -p $i -o 1024 -d 4 
+        mpirun --mca btl_tcp_if_include eth0  --bind-to none -x OMP_NUM_THREADS=$j --np $i bfsApspMPI -t $j -p $i -o 10000 -d 5
     done
 
   echo "" #### print the new line ###
